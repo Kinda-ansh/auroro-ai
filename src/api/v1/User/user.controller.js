@@ -982,7 +982,13 @@ const resendVerificationUser = async (req, res) => {
 
 const verifytoken = async (req, res) => {
   try {
-    const token = CookieService.getCookie(req, 'token');
+    // Check Authorization header first, then cookie
+    let token = req.header('Authorization')?.replace('Bearer ', '');
+
+    if (!token) {
+      token = CookieService.getCookie(req, 'token');
+    }
+
     if (!token) {
       return createResponse({
         res,
@@ -999,12 +1005,22 @@ const verifytoken = async (req, res) => {
         res,
         statusCode: httpStatus.UNAUTHORIZED,
         message: 'Invalid or expired token',
-
+        status: false,
         error: { field: 'token', message: 'Invalid or expired token' },
       });
     }
 
-    let user = await User.findById(decoded.id);
+    let user = await User.findById(decoded.id).select('-password');
+
+    if (!user) {
+      return createResponse({
+        res,
+        statusCode: httpStatus.UNAUTHORIZED,
+        message: 'User not found',
+        status: false,
+        error: { field: 'token', message: 'User not found' },
+      });
+    }
 
     return createResponse({
       res,
@@ -1012,9 +1028,11 @@ const verifytoken = async (req, res) => {
       status: true,
       message: 'Token is valid',
       data: {
-        token,
-        decoded,
-        user,
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        role: user.userRole,
+        mobile: user.mobile
       },
     });
   } catch (error) {
