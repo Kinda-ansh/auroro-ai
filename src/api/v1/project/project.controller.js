@@ -291,11 +291,63 @@ const deleteProject = async (req, res) => {
         });
     }
 };
+/**
+ * Update project canvas
+ */
+const updateCanvas = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user._id;
+        const { canvasNodes } = req.body;
+
+        // Basic validation
+        if (!canvasNodes || !Array.isArray(canvasNodes)) {
+            return createResponse({
+                res,
+                statusCode: httpStatus.BAD_REQUEST,
+                status: false,
+                message: 'Invalid canvas nodes data'
+            });
+        }
+
+        const project = await Project.findOne({ _id: id, userId });
+
+        if (!project) {
+            return createResponse({
+                res,
+                statusCode: httpStatus.NOT_FOUND,
+                status: false,
+                message: 'Project not found'
+            });
+        }
+
+        project.canvasNodes = canvasNodes;
+        project.updatedBy = userId;
+        await project.save();
+
+        return createResponse({
+            res,
+            statusCode: httpStatus.OK,
+            status: true,
+            message: 'Canvas updated successfully',
+            data: { project }
+        });
+    } catch (error) {
+        return createResponse({
+            res,
+            statusCode: httpStatus.INTERNAL_SERVER_ERROR,
+            message: 'Failed to update canvas',
+            status: false,
+            error: error.message
+        });
+    }
+};
 
 export const projectController = {
     createProject,
     listProjects,
     getProject,
     updateProject,
-    deleteProject
+    deleteProject,
+    updateCanvas
 };

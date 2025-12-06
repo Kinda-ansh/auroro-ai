@@ -27,6 +27,20 @@ const projectSchema = new Schema(
                 enum: ['gemini', 'openai', 'deepseek', 'microsoft', 'llama']
             }]
         },
+        canvasNodes: [{
+            id: String,
+            type: {
+                type: String,
+                enum: ['circle', 'square', 'arrow', 'line', 'text', 'ai-response']
+            },
+            x: Number,
+            y: Number,
+            width: Number,
+            height: Number,
+            content: String,
+            color: String,
+            aiResponseId: { type: mongoose.Types.ObjectId, ref: 'AIResponse' } // Link to AI response if applicable
+        }],
         isArchived: {
             type: Boolean,
             default: false
