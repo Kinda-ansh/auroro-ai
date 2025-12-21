@@ -40,9 +40,9 @@ const config = {
     salt: envVars.BCRYPT_SALT_ROUNDS,
   },
   baseUrl: envVars.BASE_URL,
-  googleClientId: envVars.googleClientId,
-  googleProjectId: envVars.googleProjectId,
-  googleClientSecret: envVars.googleClientSecret,
+  googleClientId: process.env.GOOGLE_CLIENT_ID || envVars.googleClientId,
+  googleProjectId: process.env.GOOGLE_PROJECT_ID || envVars.googleProjectId,
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || envVars.googleClientSecret,
 };
 
 export default config;

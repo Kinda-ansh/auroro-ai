@@ -14,7 +14,6 @@ const userSchema = new Schema(
     },
     email: { type: String, unique: true, trim: true },
     mobile: { type: String, unique: true, trim: true, sparse: true },
-
     password: { type: String, trim: true },
     lastLogin: { date: String, ip: String },
     userRole: { type: mongoose.Types.ObjectId, ref: 'Role' },
@@ -31,7 +30,7 @@ const userSchema = new Schema(
     emailVerified: { type: Boolean, default: false },
     verificationToken: { type: String, trim: true },
     verificationTokenExpires: { type: String, trim: true },
-    
+
   },
   {
     toJSON: { getters: true },
