@@ -164,3 +164,17 @@ export const getAIStatsValidation = yup.object().shape({
         .oneOf(['gemini', 'openai', 'deepseek', 'microsoft', 'llama'])
         .optional()
 });
+
+export const selectPreferredResponseValidation = yup.object().shape({
+    id: yup
+        .string()
+        .required('AI Response ID is required')
+        .test('is-object-id', 'Invalid AI Response ID format', (value) => {
+            return mongoose.Types.ObjectId.isValid(value);
+        }),
+
+    model: yup
+        .string()
+        .required('Model name is required')
+        .oneOf(['gemini', 'openai', 'deepseek', 'microsoft', 'llama'])
+});

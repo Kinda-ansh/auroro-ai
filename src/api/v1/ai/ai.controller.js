@@ -18,7 +18,8 @@ import {
     listAIResponsesValidation,
     updateModelResponseValidation,
     deleteAIResponseValidation,
-    getAIStatsValidation
+    getAIStatsValidation,
+    selectPreferredResponseValidation
 } from './ai.validator';
 
 /**
@@ -639,12 +640,130 @@ const retryFailedResponses = async (req, res) => {
     }
 };
 
+/**
+ * Select a preferred response and remove others
+ */
+
+const selectPreferredResponse = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { model } = req.body;
+        const userId = req.user._id;
+
+        await selectPreferredResponseValidation.validate({ id, model });
+
+        // First verification pass - check if it exists and has the response
+        const checkResponse = await AIResponse.findOne({ _id: id, userId });
+
+        if (!checkResponse) {
+            return createResponse({
+                res,
+                statusCode: httpStatus.NOT_FOUND,
+                status: false,
+                message: 'AI response not found'
+            });
+        }
+
+        const selectedResponseField = `${model}_response`;
+        if (!checkResponse[selectedResponseField] || !checkResponse[selectedResponseField].response) {
+            return createResponse({
+                res,
+                statusCode: httpStatus.BAD_REQUEST,
+                status: false,
+                message: 'Selected model response does not exist'
+            });
+        }
+
+        // Prepare update operations
+        const models = ['gemini', 'openai', 'deepseek', 'microsoft', 'llama'];
+        const unsetFields = {};
+
+        models.forEach(m => {
+            if (m !== model) {
+                unsetFields[`${m}_response`] = ""; // Value doesn't matter for $unset
+            }
+        });
+
+        console.log(`[SelectPreferred] Attempting update for ${id}`, {
+            modelToKeep: model,
+            unsetFields: Object.keys(unsetFields)
+        });
+
+        // Use findOneAndUpdate for atomic and reliable update
+        const aiResponse = await AIResponse.findOneAndUpdate(
+            { _id: id, userId },
+            {
+                $unset: unsetFields,
+                $set: {
+                    'settings.enabledModels': [model],
+                    totalModels: 1,
+                    completedModels: 1,
+                    failedModels: 0,
+                    overallStatus: 'completed',
+                    updatedBy: userId
+                }
+            },
+            { new: true } // Return updated document
+        );
+
+        if (aiResponse) {
+            console.log(`[SelectPreferred] Update successful. Enabled models:`, aiResponse.settings.enabledModels);
+            // Verify specific field removal
+            const remaining = models.filter(m => aiResponse[`${m}_response`]);
+            console.log(`[SelectPreferred] Remaining response fields:`, remaining);
+        } else {
+            console.error(`[SelectPreferred] Update failed - document not returned`);
+        }
+
+        // 2. Update Project Settings
+        if (aiResponse.projectId) {
+            const Project = (await import('../project/project.model.js')).default;
+            await Project.updateOne(
+                { _id: aiResponse.projectId },
+                {
+                    $set: {
+                        'settings.enabledModels': [model]
+                    }
+                }
+            );
+        }
+
+        return createResponse({
+            res,
+            statusCode: httpStatus.OK,
+            status: true,
+            message: 'Preferred response selected and project settings updated',
+            data: { aiResponse }
+        });
+
+    } catch (error) {
+        if (error.name === 'ValidationError') {
+            return createResponse({
+                res,
+                statusCode: httpStatus.BAD_REQUEST,
+                message: error.errors?.[0] || 'Validation error',
+                status: false,
+                error: error.errors
+            });
+        }
+        return createResponse({
+            res,
+            statusCode: httpStatus.INTERNAL_SERVER_ERROR,
+            message: 'Failed to select preferred response',
+            status: false,
+            error: error.message
+        });
+    }
+};
+
 export const aiController = {
     generateAIResponse,
     listAIResponses,
     getAIResponse,
     updateModelResponse,
     deleteAIResponse,
-    getAIStats,
-    retryFailedResponses
+    getAIStatsValidation,
+    retryFailedResponses,
+    selectPreferredResponse,
+    getAIStats
 };

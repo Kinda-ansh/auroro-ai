@@ -15,6 +15,7 @@ router.delete('/:id', auth, aiController.deleteAIResponse);
 
 // Retry operations
 router.post('/:id/retry', auth, aiController.retryFailedResponses);
+router.post('/:id/select', auth, aiController.selectPreferredResponse);
 
 // Individual model operations
 router.post('/:responseId/model/:model/generate', auth, aiModelController.generateSingleModelResponse);
