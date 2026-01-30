@@ -71,6 +71,12 @@ const aiResponseSchema = new Schema(
             default: 'processing'
         },
 
+        // Selection
+        selectedModel: {
+            type: String,
+            default: null
+        },
+
         // Timing information
         startTime: { type: Date, default: Date.now },
         endTime: { type: Date },
@@ -83,6 +89,11 @@ const aiResponseSchema = new Schema(
         // Metadata
         ipAddress: { type: String },
         userAgent: { type: String },
+        previousResponseId: {
+            type: mongoose.Types.ObjectId,
+            ref: 'AIResponse',
+            required: false
+        },
         createdBy: { type: mongoose.Types.ObjectId, ref: 'User' },
         updatedBy: { type: mongoose.Types.ObjectId, ref: 'User' },
     },

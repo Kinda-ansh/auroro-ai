@@ -35,7 +35,7 @@ const generateAIResponse = async (req, res) => {
         // Validate payload
         await generateAIResponseValidation.validate(payload, { abortEarly: false });
 
-        let { prompt, projectId, settings = {} } = payload;
+        let { prompt, projectId, previousResponseId, settings = {} } = payload;
 
         // Auto-create default project if not provided
         if (!projectId) {
@@ -91,6 +91,8 @@ const generateAIResponse = async (req, res) => {
             overallStatus: 'processing',
             ipAddress,
             userAgent,
+            previousResponseId: previousResponseId || null,
+            selectedModel: (previousResponseId && modelsToUse.length === 1) ? modelsToUse[0] : null,
             createdBy: userId
         });
 
@@ -115,7 +117,10 @@ const generateAIResponse = async (req, res) => {
         });
 
         // Generate responses from all models independently (don't await)
-        generateIndependentResponses(aiResponse._id, prompt, modelsToUse, settings);
+        generateIndependentResponses(aiResponse._id, prompt, modelsToUse, {
+            ...settings,
+            previousResponseId: previousResponseId || null
+        });
 
     } catch (error) {
         if (error.name === 'ValidationError') {
@@ -231,14 +236,34 @@ const listAIResponses = async (req, res) => {
         const sortConfig = {};
         sortConfig[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
-        const [aiResponses, totalCount] = await Promise.all([
-            AIResponse.find(query)
-                .sort(sortConfig)
-                .skip(skip)
-                .limit(limit)
-                .select('-__v'),
-            AIResponse.countDocuments(query)
-        ]);
+        const page = Math.floor(skip / limit) + 1;
+
+        const responses = await AIResponse.find(query)
+            .sort(sortConfig)
+            .limit(parseInt(limit))
+            .skip((parseInt(page) - 1) * parseInt(limit))
+            .populate('userId', 'name email avatar')
+            .populate('projectId', 'name')
+            .select('-__v') // Keep the original select
+            .lean(); // Use lean for performance
+
+        // Debug logging to see what we are returning
+        console.log(`[ListResponses] Returning ${responses.length} responses`);
+        responses.forEach(r => {
+            console.log(`[ListResponses] ID: ${r._id}`);
+            console.log(`[ListResponses] Selected: ${r.selectedModel}`);
+            console.log(`[ListResponses] Enabled: ${r.settings?.enabledModels}`);
+            console.log(`[ListResponses] Models Present:`, {
+                gemini: !!r.gemini_response,
+                openai: !!r.openai_response,
+                deepseek: !!r.deepseek_response,
+                microsoft: !!r.microsoft_response,
+                llama: !!r.llama_response
+            });
+        });
+
+        // Get total count for pagination
+        const total = await AIResponse.countDocuments(query);
 
         return createResponse({
             res,
@@ -246,10 +271,10 @@ const listAIResponses = async (req, res) => {
             status: true,
             message: 'AI responses retrieved successfully',
             data: {
-                aiResponses,
-                count: totalCount,
+                aiResponses: responses,
+                count: total,
                 page: Math.floor(skip / limit) + 1,
-                totalPages: Math.ceil(totalCount / limit)
+                totalPages: Math.ceil(total / limit)
             }
         });
     } catch (error) {
@@ -650,12 +675,69 @@ const selectPreferredResponse = async (req, res) => {
         const { model } = req.body;
         const userId = req.user._id;
 
+        console.log(`[SelectPreferred] ========== START ==========`);
+        console.log(`[SelectPreferred] Request received:`, { id, model, userId: userId.toString() });
+
         await selectPreferredResponseValidation.validate({ id, model });
 
-        // First verification pass - check if it exists and has the response
-        const checkResponse = await AIResponse.findOne({ _id: id, userId });
+        // Handle clearing selection (undo)
+        if (model === '') {
+            // Get the original response
+            const aiResponse = await AIResponse.findOne({ _id: id, userId });
 
-        if (!checkResponse) {
+            if (!aiResponse) {
+                return createResponse({
+                    res,
+                    statusCode: httpStatus.NOT_FOUND,
+                    status: false,
+                    message: 'AI response not found'
+                });
+            }
+
+            console.log('[SelectPreferred] Undoing selection...');
+
+            // Determine which models currently exist
+            const models = ['gemini', 'openai', 'deepseek', 'microsoft', 'llama'];
+            const existingModels = models.filter(m => aiResponse[`${m}_response`]);
+
+            // Reset selection
+            aiResponse.selectedModel = null;
+            aiResponse.updatedBy = userId;
+
+            // Restore enabled models list
+            // If we have existing models, use them. If not (rare, or logic error), default to all.
+            // Note: Since we deleted response fields on selection, we can't easily "restore" them if they're gone from DB
+            // But we CAN restore the 'settings.enabledModels' list so the UI knows they *could* be there (or prompts re-run)
+            // Actually, if we deleted the data, undoing "selection" won't bring back the text.
+            // BUT, if the user just wants to see what's left, or re-run...
+
+            // Wait, if we deleted the data in the "Done" step, then "Undo" CANNOT restore the text of the deleted models.
+            // This is a trade-off. If we want Undo to fully work, we shouldn't delete the data, just hide it.
+            // But the requirement was "remove others dynamically".
+
+            // If the user wants full persistence + undo, we probably shouldn't delete the data, just rely on 'selectedModel' filter.
+            // However, the user complained it "shows again on refresh", implying the filter logic failed.
+            // So we went with hard deletion.
+            // Now, strict Undo logic implies we just clear the 'selectedModel' flag.
+            // The deleted models will remain deleted.
+
+            aiResponse.settings.enabledModels = existingModels.length > 0 ? existingModels : models;
+
+            await aiResponse.save();
+
+            return createResponse({
+                res,
+                statusCode: httpStatus.OK,
+                status: true,
+                message: 'Selection cleared successfully',
+                data: { aiResponse }
+            });
+        }
+
+        // Fetch the document first
+        const aiResponse = await AIResponse.findOne({ _id: id, userId });
+
+        if (!aiResponse) {
             return createResponse({
                 res,
                 statusCode: httpStatus.NOT_FOUND,
@@ -665,7 +747,7 @@ const selectPreferredResponse = async (req, res) => {
         }
 
         const selectedResponseField = `${model}_response`;
-        if (!checkResponse[selectedResponseField] || !checkResponse[selectedResponseField].response) {
+        if (!aiResponse[selectedResponseField] || !aiResponse[selectedResponseField].response) {
             return createResponse({
                 res,
                 statusCode: httpStatus.BAD_REQUEST,
@@ -674,66 +756,52 @@ const selectPreferredResponse = async (req, res) => {
             });
         }
 
-        // Prepare update operations
+        console.log(`[SelectPreferred] Found response, updating (using native driver)...`);
+
+        // Prepare $unset for all other models
         const models = ['gemini', 'openai', 'deepseek', 'microsoft', 'llama'];
         const unsetFields = {};
-
         models.forEach(m => {
             if (m !== model) {
                 unsetFields[`${m}_response`] = ""; // Value doesn't matter for $unset
             }
         });
 
-        console.log(`[SelectPreferred] Attempting update for ${id}`, {
-            modelToKeep: model,
-            unsetFields: Object.keys(unsetFields)
-        });
-
-        // Use findOneAndUpdate for atomic and reliable update
-        const aiResponse = await AIResponse.findOneAndUpdate(
-            { _id: id, userId },
+        // Use native MongoDB driver to bypass Mongoose schema re-population/validation issues
+        const result = await AIResponse.collection.findOneAndUpdate(
+            { _id: aiResponse._id },
             {
-                $unset: unsetFields,
                 $set: {
-                    'settings.enabledModels': [model],
-                    totalModels: 1,
-                    completedModels: 1,
-                    failedModels: 0,
+                    selectedModel: model,
                     overallStatus: 'completed',
-                    updatedBy: userId
-                }
+                    updatedBy: userId,
+                    'settings.enabledModels': [model]
+                },
+                $unset: unsetFields
             },
-            { new: true } // Return updated document
+            { returnDocument: 'after' }
         );
 
-        if (aiResponse) {
-            console.log(`[SelectPreferred] Update successful. Enabled models:`, aiResponse.settings.enabledModels);
-            // Verify specific field removal
-            const remaining = models.filter(m => aiResponse[`${m}_response`]);
-            console.log(`[SelectPreferred] Remaining response fields:`, remaining);
-        } else {
-            console.error(`[SelectPreferred] Update failed - document not returned`);
+        console.log(`[SelectPreferred] Native update result:`, result ? 'Success' : 'Failed');
+
+        if (!result) {
+            return createResponse({
+                res,
+                statusCode: httpStatus.INTERNAL_SERVER_ERROR,
+                status: false,
+                message: 'Failed to update response'
+            });
         }
 
-        // 2. Update Project Settings
-        if (aiResponse.projectId) {
-            const Project = (await import('../project/project.model.js')).default;
-            await Project.updateOne(
-                { _id: aiResponse.projectId },
-                {
-                    $set: {
-                        'settings.enabledModels': [model]
-                    }
-                }
-            );
-        }
+        // Return the updated document directly from result if available, or fetch it
+        const updatedDoc = result.value || result;
 
         return createResponse({
             res,
             statusCode: httpStatus.OK,
             status: true,
             message: 'Preferred response selected and project settings updated',
-            data: { aiResponse }
+            data: { aiResponse: updatedDoc }
         });
 
     } catch (error) {

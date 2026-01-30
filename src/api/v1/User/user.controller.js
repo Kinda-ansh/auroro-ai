@@ -314,27 +314,20 @@ const login = async (req, res) => {
       id: user._id,
     });
 
-    user.token = token;
-
-    await user.save();
-
-    // if (user.activeSessionId) {
-    //   await mongoose.connection.db
-    //     .collection('sessions')
-    //     .deleteOne({ _id: user.activeSessionId });
-    // }
-
     req.session.userId = user._id.toString();
     const lastLoginDate = moment().format('DD MMM, YYYY HH:mm:ss');
     const clientIp = getClientIp(req);
     await User.updateOne(
       { _id: user._id },
       {
-        $set: { activeSessionId: req.sessionID },
-        lastLogin: {
-          date: lastLoginDate,
-          ip: clientIp,
-        },
+        $set: {
+          token: token,
+          activeSessionId: req.sessionID,
+          lastLogin: {
+            date: lastLoginDate,
+            ip: clientIp,
+          },
+        }
       }
     );
 

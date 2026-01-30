@@ -321,6 +321,10 @@ const updateCanvas = async (req, res) => {
             });
         }
 
+        console.log(`📝 Updating canvas for project ${id}: ${canvasNodes.length} nodes received`);
+        if (canvasNodes.length > 0) {
+            console.log('Sample node type:', canvasNodes[0].type);
+        }
         project.canvasNodes = canvasNodes;
         project.updatedBy = userId;
         await project.save();

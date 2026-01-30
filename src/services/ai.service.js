@@ -106,14 +106,43 @@ class AIService {
                 throw new Error(`${modelName} API key not configured - Please set OPENROUTER_API_KEY in environment variables`);
             }
 
-            // Gemini models require content array format as per OpenRouter documentation
-            const messages = [{
+            // Build conversation history if previousResponseId is provided
+            const messages = [];
+
+            if (settings.previousResponseId) {
+                try {
+                    const AIResponse = (await import('../api/v1/ai/ai.model.js')).default;
+                    const prevResponse = await AIResponse.findById(settings.previousResponseId);
+
+                    if (prevResponse) {
+                        // Add original prompt and selected model's response
+                        messages.push({
+                            role: 'user',
+                            content: [{ type: 'text', text: prevResponse.prompt }]
+                        });
+
+                        const prevModelResponse = prevResponse[`${modelName}_response`]?.response;
+                        if (prevModelResponse) {
+                            messages.push({
+                                role: 'assistant',
+                                content: [{ type: 'text', text: prevModelResponse }]
+                            });
+                        }
+                        console.log(`[${modelName}] Added conversation history from ${settings.previousResponseId}`);
+                    }
+                } catch (err) {
+                    console.error(`[${modelName}] Error fetching history:`, err);
+                }
+            }
+
+            // Add the current prompt
+            messages.push({
                 role: 'user',
                 content: [{
                     type: 'text',
                     text: prompt
                 }]
-            }];
+            });
 
             const requestData = {
                 model: apiModel,

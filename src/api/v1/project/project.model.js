@@ -31,7 +31,7 @@ const projectSchema = new Schema(
             id: String,
             type: {
                 type: String,
-                enum: ['circle', 'square', 'arrow', 'line', 'text', 'ai-response']
+                enum: ['circle', 'square', 'arrow', 'line', 'text', 'ai-response', 'prompt_input', 'a4-document', 'image']
             },
             x: Number,
             y: Number,
@@ -39,7 +39,17 @@ const projectSchema = new Schema(
             height: Number,
             content: String,
             color: String,
-            aiResponseId: { type: mongoose.Types.ObjectId, ref: 'AIResponse' } // Link to AI response if applicable
+            points: [{
+                id: String,
+                index: String,
+                x: Number,
+                y: Number
+            }],
+            index: String,
+            rotation: Number,
+            aiResponseId: { type: mongoose.Types.ObjectId, ref: 'AIResponse' }, // Link to AI response if applicable
+            assetId: String,
+            url: String
         }],
         isArchived: {
             type: Boolean,

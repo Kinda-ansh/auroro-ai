@@ -17,6 +17,14 @@ export const generateAIResponseValidation = yup.object().shape({
             return mongoose.Types.ObjectId.isValid(value);
         }),
 
+    previousResponseId: yup
+        .string()
+        .optional()
+        .test('is-object-id', 'Invalid Response ID format', (value) => {
+            if (!value) return true; // Optional
+            return mongoose.Types.ObjectId.isValid(value);
+        }),
+
     settings: yup.object().shape({
         temperature: yup
             .number()
@@ -176,5 +184,9 @@ export const selectPreferredResponseValidation = yup.object().shape({
     model: yup
         .string()
         .required('Model name is required')
-        .oneOf(['gemini', 'openai', 'deepseek', 'microsoft', 'llama'])
+        .test('is-valid-model', 'Invalid model name', (value) => {
+            // Allow empty string to clear selection
+            if (value === '') return true;
+            return ['gemini', 'openai', 'deepseek', 'microsoft', 'llama'].includes(value);
+        })
 });
