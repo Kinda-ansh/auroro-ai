@@ -27,6 +27,7 @@ import {
  */
 const generateAIResponse = async (req, res) => {
     try {
+        console.log('🚀 AI Generation Request Received. Body:', JSON.stringify(req.body, null, 2));
         const payload = req.body;
         const userId = req.user._id;
         const ipAddress = req.ip || req.connection.remoteAddress;
@@ -35,16 +36,26 @@ const generateAIResponse = async (req, res) => {
         // Validate payload
         await generateAIResponseValidation.validate(payload, { abortEarly: false });
 
-        let { prompt, projectId, previousResponseId, settings = {} } = payload;
+        let { prompt, projectId, previousResponseId, canvasContext, settings = {} } = payload;
+
+        // Prepend canvas context to prompt if available
+        if (canvasContext) {
+            console.log(`📝 Received Canvas Context (${canvasContext.length} chars):`, canvasContext.substring(0, 100) + '...');
+            prompt = `[CANVAS CONTEXT START]\n${canvasContext}\n[CANVAS CONTEXT END]\n\nUSER PROMPT:\n${prompt}`;
+        } else {
+            console.log('⚠️ No Canvas Context received in payload');
+        }
 
         // Auto-create default project if not provided
         if (!projectId) {
             const Project = (await import('../project/project.model.js')).default;
 
             // Use first part of prompt as project name (max 50 chars)
-            const projectName = prompt.length > 50
-                ? prompt.substring(0, 50) + '...'
-                : prompt;
+            // Strip context tagging if present for the project name
+            const cleanPrompt = prompt.replace(/\[CANVAS CONTEXT START\][\s\S]*?\[CANVAS CONTEXT END\]\s*/, '');
+            const projectName = cleanPrompt.length > 50
+                ? cleanPrompt.substring(0, 50) + '...'
+                : cleanPrompt;
 
             const defaultProject = new Project({
                 name: projectName,

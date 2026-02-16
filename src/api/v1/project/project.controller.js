@@ -321,13 +321,11 @@ const updateCanvas = async (req, res) => {
             });
         }
 
-        console.log(`📝 Updating canvas for project ${id}: ${canvasNodes.length} nodes received`);
-        if (canvasNodes.length > 0) {
-            console.log('Sample node type:', canvasNodes[0].type);
-        }
         project.canvasNodes = canvasNodes;
         project.updatedBy = userId;
+
         await project.save();
+
 
         return createResponse({
             res,
@@ -337,6 +335,7 @@ const updateCanvas = async (req, res) => {
             data: { project }
         });
     } catch (error) {
+        console.error(`❌ Canvas update failed for project ${req.params.id}:`, error.message);
         return createResponse({
             res,
             statusCode: httpStatus.INTERNAL_SERVER_ERROR,

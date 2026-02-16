@@ -25,6 +25,10 @@ export const generateAIResponseValidation = yup.object().shape({
             return mongoose.Types.ObjectId.isValid(value);
         }),
 
+    canvasContext: yup
+        .string()
+        .optional(),
+
     settings: yup.object().shape({
         temperature: yup
             .number()
